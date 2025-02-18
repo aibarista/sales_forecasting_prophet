@@ -17,7 +17,6 @@ This project is a **Flask-based API** that processes **historical sales data** f
 
 ## 🏠 Project Structure
 
-```
 backend/
 │── app/
 │   ├── __init__.py          # Initialize Flask app
@@ -46,7 +45,7 @@ backend/
 │── run.py                   # Run Flask app
 ```
 
-```
+---
 
 ## ⚡ Installation
 
