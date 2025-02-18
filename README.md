@@ -46,7 +46,7 @@ backend/
 │── run.py                   # Run Flask app
 ```
 
----
+```
 
 ## ⚡ Installation
 
