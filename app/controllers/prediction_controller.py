@@ -4,6 +4,7 @@ from datetime import datetime
 import re
 from prophet import Prophet
 import pandas as pd
+import numpy as np
 
 
 def predict_sales_forecasting(data, start_date, duration):
@@ -149,3 +150,87 @@ def preprocess_data(data):
     json_data = list(aggregated_data.values())
 
     return json_data
+
+
+def calculate_error_metrics(data, start_date, duration):
+    json_data = preprocess_data(data)
+    forecast_periods = duration
+    forecast_start_date = start_date  # e.g., "2024-03-01"
+    training_cutoff = pd.to_datetime(
+        forecast_start_date
+    )  # use data strictly before forecast start
+
+    # Full data DataFrame
+    full_df = pd.DataFrame(json_data)
+    full_df["ds"] = pd.to_datetime(full_df["ds"], format="%Y-%m-%d")
+    products = full_df["product_name"].unique()
+    error_results = []
+
+    for product in products:
+        # Use only data before forecast_start_date for training
+        training_df = full_df[
+            (full_df["product_name"] == product) & (full_df["ds"] < training_cutoff)
+        ].sort_values("ds")
+        if training_df.empty:
+            # Skip product if no training data is available
+            continue
+
+        m = Prophet()
+        m.fit(training_df[["ds", "y"]])
+
+        # Create forecast for the specified period
+        future = pd.date_range(
+            start=forecast_start_date, periods=forecast_periods, freq="MS"
+        ).to_frame(index=False, name="ds")
+        end_date = future["ds"].max() + pd.offsets.MonthEnd(0)
+        forecast = m.predict(future)
+        yhat = forecast["yhat"].values
+
+        # Now get actual sales from the full data for the forecast period
+        actual_range = pd.date_range(
+            start=forecast_start_date, periods=forecast_periods, freq="MS"
+        )
+        actual_sales = []
+        for d in actual_range:
+            d_str = d.strftime("%Y-%m")
+            row = full_df[
+                (full_df["product_name"] == product)
+                & (full_df["ds"].dt.strftime("%Y-%m") == d_str)
+            ]
+            if not row.empty:
+                actual_sales.append(row.iloc[0]["y"])
+            else:
+                actual_sales.append(0)
+        yhat_arr = np.array(yhat)
+        actual_arr = np.array(actual_sales)
+
+        # Calculate error metrics
+        mae = np.mean(np.abs(yhat_arr - actual_arr))
+        rmse = np.sqrt(np.mean((yhat_arr - actual_arr) ** 2))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mape = (
+                np.mean(
+                    np.where(
+                        actual_arr != 0, np.abs((yhat_arr - actual_arr) / actual_arr), 0
+                    )
+                )
+                * 100
+            )
+
+        sum_forecast = yhat_arr.sum()
+        sum_actual = actual_arr.sum()
+
+        error_results.append(
+            {
+                "ProductName": product,
+                "Duration": f"{forecast_start_date} - {end_date.date()}",
+                "Forecast": float(round(sum_forecast, 2)),
+                "Actual Sales": float(round(sum_actual, 2)),
+                "Error Metrics": {
+                    "MAE": float(round(mae, 2)),
+                    "RMSE": float(round(rmse, 2)),
+                    "MAPE": f"{float(round(mape, 2))}%",
+                },
+            }
+        )
+    return json.dumps(error_results, indent=4)
