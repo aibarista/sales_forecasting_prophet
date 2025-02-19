@@ -5,9 +5,18 @@ import re
 from prophet import Prophet
 import pandas as pd
 import numpy as np
+from app.models.prediction import Prediction
+from app.models.file import File
+from app.extensions import db
 
 
 def predict_sales_forecasting(data, start_date, duration):
+
+    file_data = data.read()
+
+    file_record = File(filename=data.filename, filedata=file_data)
+    db.session.add(file_record)
+    db.session.commit()
 
     json_data = preprocess_data(data)
     forecast_periods = duration
@@ -79,13 +88,27 @@ def predict_sales_forecasting(data, start_date, duration):
             {
                 "ProductName": product,
                 "Duration": f"{forecast_start_date} - {end_date.date()}",
-                "Forecast": round(sum_forecast_now, 2),
-                "Last Year Actual Sales": round(actual_last_year_sales, 2),
+                "Forecast": round(sum_forecast_now),
+                "Last Year Actual Sales": round(actual_last_year_sales),
                 "% Change from Previous Year": (
                     round(percent_change, 2) if percent_change != "N/A" else "N/A"
                 ),
             }
         )
+
+        prediction = Prediction(
+            file_id=file_record.id,
+            product_name=product,
+            duration=f"{forecast_start_date} - {end_date.date()}",
+            forecast=str(round(sum_forecast_now)),
+            actual_sales=str(round(actual_last_year_sales)),
+            percent_change=str(
+                (round(percent_change, 2) if percent_change != "N/A" else "N/A")
+            ),
+        )
+        db.session.add(prediction)
+        db.session.commit()
+
     return json.dumps(forecast_results, indent=4)
 
 
